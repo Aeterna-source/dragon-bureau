@@ -164,6 +164,9 @@ const allowMockFallback =
   window.location.hostname === "127.0.0.1" ||
   window.location.hostname.startsWith("192.168.");
 
+const sceneVolume = 0.35;
+const summonVolume = 0.42;
+
 const state = {
   index: 0,
   entranceStep: "question",
@@ -224,11 +227,12 @@ function playCurrentAudio() {
   void els.audio.play().catch(() => {});
 }
 
-function setAudio(src, loop = true) {
+function setAudio(src, loop = true, volume = sceneVolume) {
   if (!els.audio.src.endsWith(src.replace("./", ""))) {
     els.audio.pause();
     els.audio.src = src;
   }
+  els.audio.volume = volume;
   els.audio.loop = loop;
   playCurrentAudio();
 }
@@ -454,7 +458,7 @@ async function finalize() {
   setBusy(true, text().summoning);
   els.answer.classList.add("is-hidden");
   els.summonAudio.pause();
-  setAudio(asset("audio/Summon Anthem.mp3"), true);
+  setAudio(asset("audio/Summon Anthem.mp3"), true, summonVolume);
 
   let result;
   try {
