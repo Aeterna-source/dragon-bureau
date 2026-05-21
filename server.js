@@ -334,6 +334,7 @@ async function finalizeDragon(payload) {
 
   const result = await callResponsesJson({
     name: "dragon_result",
+    maxOutputTokens: 2600,
     schema: {
       type: "object",
       additionalProperties: false,
@@ -443,7 +444,7 @@ async function generateDragonImage(payload) {
   throw new Error("Image API returned no image");
 }
 
-async function callResponsesJson({ name, schema, system, user }) {
+async function callResponsesJson({ name, schema, system, user, maxOutputTokens = 1200 }) {
   ensureApiKey();
 
   const body = {
@@ -452,7 +453,7 @@ async function callResponsesJson({ name, schema, system, user }) {
       { role: "system", content: system },
       { role: "user", content: user },
     ],
-    max_output_tokens: 1200,
+    max_output_tokens: maxOutputTokens,
     text: {
       format: {
         type: "json_schema",
@@ -489,7 +490,7 @@ async function callResponsesJson({ name, schema, system, user }) {
           },
           { role: "user", content: user },
         ],
-        max_output_tokens: 1200,
+        max_output_tokens: maxOutputTokens,
       }),
     });
     json = await response.json();
@@ -499,7 +500,33 @@ async function callResponsesJson({ name, schema, system, user }) {
     throw new Error(json.error?.message || `Responses API failed with ${response.status}`);
   }
 
-  return parseJsonFromText(extractResponseText(json));
+  try {
+    return parseJsonFromText(extractResponseText(json));
+  } catch {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: textModel,
+        input: [
+          {
+            role: "system",
+            content: `${system}\nYour previous response was not parseable JSON. Return only one complete JSON object matching this schema:\n${JSON.stringify(schema)}`,
+          },
+          { role: "user", content: user },
+        ],
+        max_output_tokens: maxOutputTokens,
+      }),
+    });
+    json = await response.json();
+    if (!response.ok) {
+      throw new Error(json.error?.message || `Responses API failed with ${response.status}`);
+    }
+    return parseJsonFromText(extractResponseText(json));
+  }
 }
 
 function isPlainObject(value) {
