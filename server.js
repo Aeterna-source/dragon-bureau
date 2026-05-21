@@ -362,6 +362,7 @@ async function finalizeDragon(payload) {
       "Use English clan names on the card even when visible_description is in another language, unless the player explicitly asked otherwise.",
       "Make the result personal and specific. Avoid generic horoscope language.",
       "Never reuse common default dragon names. Invent a fresh pronounceable fantasy name from the player's answers, the chosen clan, and the variation seed.",
+      "The dragon name must look like a polished fantasy proper name: no digits, no raw seed fragments, and no NPC names.",
       "The dragon concept must include at least 5 personalized visual details inferred from the actual answers.",
       "If two players share a clan, their dragon names, dragon concept, description, and flavor text should still be clearly different.",
       "Do not copy any example names, example objects, or sample details unless the player's answers independently justify them.",
