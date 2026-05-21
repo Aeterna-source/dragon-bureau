@@ -13,6 +13,7 @@ loadEnv(path.join(root, ".env.local"));
 const textModel = process.env.OPENAI_TEXT_MODEL || "gpt-5.5";
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
 const apiKey = normalizeApiKey(process.env.OPENAI_API_KEY);
+const imageTimeoutMs = Number(process.env.OPENAI_IMAGE_TIMEOUT_MS || 170000);
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -407,20 +408,29 @@ async function generateDragonImage(payload) {
     throw new Error("Missing image prompt");
   }
 
-  const response = await fetch("https://api.openai.com/v1/images/generations", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: payload.model || imageModel,
-      prompt,
-      size: payload.size || "1024x1536",
-      quality: payload.quality || "high",
-      n: 1,
-    }),
-  });
+  let response;
+  try {
+    response = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(imageTimeoutMs),
+      body: JSON.stringify({
+        model: payload.model || imageModel,
+        prompt,
+        size: payload.size || "1024x1536",
+        quality: payload.quality || "high",
+        n: 1,
+      }),
+    });
+  } catch (error) {
+    if (error.name === "TimeoutError" || error.name === "AbortError") {
+      throw new Error("Image generation timed out");
+    }
+    throw error;
+  }
 
   const json = await response.json();
   if (!response.ok) {

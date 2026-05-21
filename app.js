@@ -60,8 +60,10 @@ const fallbackText = {
     restart: "Restart",
     loading: "The Bureau is listening...",
     summoning: "The registry is naming the dragon...",
-    imageLoading: "Summoning the portrait card...",
-    imageFailed: "The portrait portal flickered. The written registry survived.",
+    imageLoading: "The portrait portal is working. This can take a couple of minutes; the written registry is already safe.",
+    imageFailed: "The portrait portal did not answer in time. The written registry survived, and the image prompt can be copied.",
+    copyPrompt: "Copy Image Prompt",
+    copied: "Prompt copied",
     entering: "Entering",
     continueJourney: "Continue",
     resultLabel: "Your Inner Dragon",
@@ -80,8 +82,10 @@ const fallbackText = {
     restart: "Спочатку",
     loading: "Бюро слухає...",
     summoning: "Реєстр дає дракону ім'я...",
-    imageLoading: "Призиваємо портретну картку...",
-    imageFailed: "Портал портрета блимнув. Письмовий реєстр вцілів.",
+    imageLoading: "Портретний портал працює. Це може тривати кілька хвилин; письмовий реєстр уже в безпеці.",
+    imageFailed: "Портретний портал не відповів вчасно. Письмовий реєстр вцілів, а prompt можна скопіювати.",
+    copyPrompt: "Скопіювати prompt",
+    copied: "Prompt скопійовано",
     entering: "Входимо",
     continueJourney: "Далі",
     resultLabel: "Твій внутрішній дракон",
@@ -179,6 +183,7 @@ const state = {
   pendingNextIndex: null,
   questionIndex: 0,
   resultPrompt: "",
+  imageRequestId: 0,
 };
 
 const els = {
@@ -479,21 +484,27 @@ async function finalize() {
   }
 
   state.resultPrompt = result.image_prompt;
+  const imageRequestId = ++state.imageRequestId;
   showResult(result, null, text().imageLoading);
-  setBusy(true);
+  setBusy(false);
+  els.primary.textContent = text().restart;
 
   try {
     const image = await apiPost("/api/generate-dragon-image", {
       prompt: result.image_prompt,
       dragonName: result.dragon_name,
-    });
+    }, { timeoutMs: 180000 });
+    if (imageRequestId !== state.imageRequestId) return;
     showResult(result, image.imageUrl);
   } catch (error) {
     console.warn("Image API failed:", error);
+    if (imageRequestId !== state.imageRequestId) return;
     showResult(result, null, text().imageFailed);
   } finally {
-    setBusy(false);
-    els.primary.textContent = text().restart;
+    if (imageRequestId === state.imageRequestId) {
+      setBusy(false);
+      els.primary.textContent = text().restart;
+    }
   }
 }
 
@@ -521,6 +532,8 @@ function showResult(result, imageUrl, imageStatus = "") {
   els.progress.textContent = "Result";
   els.npcCard.classList.add("is-hidden");
   els.answer.classList.add("is-hidden");
+  els.copyPrompt.classList.toggle("is-hidden", !state.resultPrompt);
+  els.copyPrompt.textContent = text().copyPrompt;
   els.dialogue.innerHTML = `
     <div class="result-layout">
       <article class="result-card result-card--image">
@@ -587,22 +600,37 @@ function restart() {
   state.pendingNextIndex = null;
   state.questionIndex = 0;
   state.resultPrompt = "";
+  state.imageRequestId += 1;
   setActionMode("normal");
   els.dialogue.innerHTML = "";
   setSceneShell(0);
 }
 
-async function apiPost(url, payload) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || data.error || `Request failed: ${response.status}`);
+async function apiPost(url, payload, options = {}) {
+  const timeoutMs = options.timeoutMs || 120000;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || data.error || `Request failed: ${response.status}`);
+    }
+    return data;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Request timed out");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  return data;
 }
 
 function escapeHtml(value) {
@@ -624,6 +652,14 @@ els.answer.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     handlePrimary();
   }
+});
+els.copyPrompt.addEventListener("click", async () => {
+  if (!state.resultPrompt) return;
+  await navigator.clipboard.writeText(state.resultPrompt);
+  els.copyPrompt.textContent = text().copied;
+  window.setTimeout(() => {
+    els.copyPrompt.textContent = text().copyPrompt;
+  }, 1400);
 });
 
 updateAudioButton();
