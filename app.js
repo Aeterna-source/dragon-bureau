@@ -50,7 +50,7 @@ const fallbackText = {
   en: {
     entranceQuestion: "Hello, stranger. Enter? / Привіт. Увійти?",
     entranceWarning:
-      "Then mind the threshold. This is not a quiz booth, not exactly. Four Bureau agents will speak with you in your language, each from their own department. Answer honestly or beautifully; the Bureau can usually tell the difference. At the end, your inner dragon will be named, assigned a clan, and prepared for summoning.",
+      "Then mind the threshold. This is a place where what lives inside you will be given form: your own inner Dragon. This is not quite a test and certainly not an ordinary questionnaire. Four agents from different Bureau departments will speak with you in your language. Answer honestly, and do not fear your own words. At the end, once you pass the trial of sincerity, your inner dragon will be prepared for summoning. Wait a few minutes while the artist paints the portrait. Beware: lies bend the mirrors.",
     placeholder: "Answer in any language. The Bureau will follow.",
     required: "The Bureau dislikes empty paperwork. Give them something to ruin beautifully.",
     start: "Answer the door",
@@ -70,7 +70,7 @@ const fallbackText = {
   ua: {
     entranceQuestion: "Hello, stranger. Enter? / Привіт. Увійти?",
     entranceWarning:
-      "Тоді обережно з порогом. Це не зовсім тест і точно не звичайна анкета. Чотири агенти Бюро говоритимуть із тобою твоєю мовою, кожен зі свого департаменту. Відповідай чесно або красиво; Бюро зазвичай відрізняє одне від іншого. Наприкінці твій внутрішній дракон отримає ім'я, клан і буде підготовлений до призову.",
+      "Тоді обережно з порогом. Це місце, де те, що у тебе всередині, отримає форму: твого власного внутрішнього Дракона. Це не зовсім тест і точно не звичайна анкета. Чотири агенти із різних департаментів Бюро говоритимуть із тобою твоєю мовою. Відповідай чесно і не бійся слів. Наприкінці, коли ти пройдеш випробування щирістю, твій внутрішній дракон буде підготовлений до призову. Лиш зачекай кілька хвилин, поки художник робитиме портрет. Стережись: брехня викривляє дзеркала.",
     placeholder: "Відповідай будь-якою мовою. Бюро підхопить.",
     required: "Бюро не любить порожні бланки. Дай їм хоч щось красиво зіпсувати.",
     start: "Відповісти дверям",
@@ -164,8 +164,8 @@ const allowMockFallback =
   window.location.hostname === "127.0.0.1" ||
   window.location.hostname.startsWith("192.168.");
 
-const sceneVolume = 0.35;
-const summonVolume = 0.42;
+const sceneVolume = 0.18;
+const summonVolume = 0.28;
 
 const state = {
   index: 0,
@@ -224,6 +224,7 @@ function updateLanguageFromAnswer(value) {
 
 function playCurrentAudio() {
   if (!state.audioOn) return;
+  els.audio.volume = els.audio.dataset.volume ? Number(els.audio.dataset.volume) : sceneVolume;
   void els.audio.play().catch(() => {});
 }
 
@@ -232,6 +233,7 @@ function setAudio(src, loop = true, volume = sceneVolume) {
     els.audio.pause();
     els.audio.src = src;
   }
+  els.audio.dataset.volume = String(volume);
   els.audio.volume = volume;
   els.audio.loop = loop;
   playCurrentAudio();
