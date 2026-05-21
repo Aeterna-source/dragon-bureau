@@ -170,6 +170,7 @@ const allowMockFallback =
 
 const sceneVolume = 0.18;
 const summonVolume = 0.28;
+const progressKey = "dragon-bureau-progress-v2";
 
 const state = {
   index: 0,
@@ -179,10 +180,14 @@ const state = {
   audioOn: true,
   turns: [],
   currentDraft: null,
+  draftAnswer: "",
   pendingFarewell: "",
   pendingNextIndex: null,
   questionIndex: 0,
   resultPrompt: "",
+  currentResult: null,
+  resultImageUrl: "",
+  resultImageStatus: "",
   imageRequestId: 0,
 };
 
@@ -268,6 +273,69 @@ function setActionMode(mode) {
   els.primary.dataset.mode = mode;
 }
 
+function saveProgress() {
+  try {
+    localStorage.setItem(progressKey, JSON.stringify({
+      version: 2,
+      savedAt: Date.now(),
+      index: state.index,
+      entranceStep: state.entranceStep,
+      language: state.language,
+      sessionId: state.sessionId,
+      audioOn: state.audioOn,
+      turns: state.turns,
+      currentDraft: state.currentDraft,
+      draftAnswer: state.draftAnswer,
+      pendingFarewell: state.pendingFarewell,
+      pendingNextIndex: state.pendingNextIndex,
+      questionIndex: state.questionIndex,
+      resultPrompt: state.resultPrompt,
+      currentResult: state.currentResult,
+      resultImageUrl: state.resultImageUrl,
+      resultImageStatus: state.resultImageStatus,
+    }));
+  } catch {
+    // Some private browser modes disable localStorage; the quest still works without resume.
+  }
+}
+
+function restoreProgress() {
+  try {
+    const raw = localStorage.getItem(progressKey);
+    if (!raw) return false;
+
+    const saved = JSON.parse(raw);
+    if (saved.version !== 2 || !Number.isInteger(saved.index)) return false;
+
+    state.index = Math.max(0, Math.min(saved.index, scenes.length));
+    state.entranceStep = saved.entranceStep === "warning" ? "warning" : "question";
+    state.language = saved.language === "ua" ? "ua" : "en";
+    state.sessionId = saved.sessionId || state.sessionId;
+    state.audioOn = saved.audioOn !== false;
+    state.turns = Array.isArray(saved.turns) ? saved.turns : [];
+    state.currentDraft = saved.currentDraft || null;
+    state.draftAnswer = saved.draftAnswer || "";
+    state.pendingFarewell = saved.pendingFarewell || "";
+    state.pendingNextIndex = Number.isInteger(saved.pendingNextIndex) ? saved.pendingNextIndex : null;
+    state.questionIndex = Math.max(0, Math.min(Number(saved.questionIndex || 0), 2));
+    state.resultPrompt = saved.resultPrompt || "";
+    state.currentResult = saved.currentResult || null;
+    state.resultImageUrl = saved.resultImageUrl || "";
+    state.resultImageStatus = saved.resultImageStatus || "";
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function clearProgress() {
+  try {
+    localStorage.removeItem(progressKey);
+  } catch {
+    // Ignore storage failures; restart should still reset the in-memory state.
+  }
+}
+
 function renderDialogueParts(parts) {
   const lines = parts
     .map((part) => String(part || "").trim())
@@ -335,6 +403,9 @@ async function enterNpcScene(index, options = {}) {
   await showTransition(scene, options);
   setSceneShell(index, { hideNpc: true });
   state.questionIndex = 0;
+  state.currentDraft = null;
+  state.draftAnswer = "";
+  saveProgress();
   await Promise.all([loadNpcTurn(), preloadImage(scene.npcImage)]);
   setNpcCard(scene, true);
   els.answer.focus({ preventScroll: true });
@@ -425,6 +496,8 @@ function applyNpcTurn(turn) {
     notesForFinal: "",
     farewell: turn.farewell || "",
   };
+  state.draftAnswer = "";
+  saveProgress();
 }
 
 async function submitNpcAnswer() {
@@ -438,10 +511,14 @@ async function submitNpcAnswer() {
   updateLanguageFromAnswer(answer);
   state.currentDraft.answer = answer;
   state.turns.push(state.currentDraft);
+  state.draftAnswer = "";
+  saveProgress();
 
   if (state.questionIndex < 2) {
     state.questionIndex += 1;
+    state.currentDraft = null;
     els.answer.value = "";
+    saveProgress();
     await loadNpcTurn();
     return;
   }
@@ -455,6 +532,7 @@ async function submitNpcAnswer() {
     els.dialogue.textContent = state.pendingFarewell;
     els.primary.textContent = text().continueJourney;
     setActionMode("handoff");
+    saveProgress();
     return;
   }
 
@@ -521,6 +599,9 @@ function applyApiError(error) {
 
 function showResult(result, imageUrl, imageStatus = "") {
   state.index = scenes.length;
+  state.currentResult = result;
+  state.resultImageUrl = imageUrl || "";
+  state.resultImageStatus = imageStatus || "";
   const notes = Array.isArray(result.bureau_notes) ? result.bureau_notes : [];
   const imageMarkup = imageUrl
     ? `<img class="dragon-portrait" src="${imageUrl}" alt="${escapeHtml(result.dragon_name)} portrait card" />`
@@ -549,6 +630,7 @@ function showResult(result, imageUrl, imageStatus = "") {
       </aside>
     </div>
   `;
+  saveProgress();
 }
 
 function handlePrimary() {
@@ -557,6 +639,7 @@ function handlePrimary() {
     state.pendingFarewell = "";
     state.pendingNextIndex = null;
     setActionMode("normal");
+    saveProgress();
     void enterNpcScene(nextIndex, { showLocation: true });
     return;
   }
@@ -572,12 +655,15 @@ function handlePrimary() {
 
       updateLanguageFromAnswer(answer);
       state.entranceStep = "warning";
+      state.draftAnswer = "";
       playCurrentAudio();
       setSceneShell(0);
+      saveProgress();
       return;
     }
 
     playCurrentAudio();
+    saveProgress();
     void enterNpcScene(1);
     return;
   }
@@ -591,19 +677,66 @@ function handlePrimary() {
 }
 
 function restart() {
+  clearProgress();
   state.index = 0;
   state.entranceStep = "question";
   state.language = "en";
   state.turns = [];
   state.currentDraft = null;
+  state.draftAnswer = "";
   state.pendingFarewell = "";
   state.pendingNextIndex = null;
   state.questionIndex = 0;
   state.resultPrompt = "";
+  state.currentResult = null;
+  state.resultImageUrl = "";
+  state.resultImageStatus = "";
   state.imageRequestId += 1;
   setActionMode("normal");
   els.dialogue.innerHTML = "";
   setSceneShell(0);
+}
+
+function resumeSavedScreen() {
+  updateAudioButton();
+
+  if (state.index >= scenes.length && state.currentResult) {
+    showResult(state.currentResult, state.resultImageUrl, state.resultImageStatus || text().imageFailed);
+    setBusy(false);
+    els.primary.textContent = text().restart;
+    return;
+  }
+
+  if (state.index >= scenes.length) {
+    restart();
+    return;
+  }
+
+  setSceneShell(state.index);
+
+  if (state.index === 0) {
+    els.answer.value = state.draftAnswer;
+    return;
+  }
+
+  if (state.pendingNextIndex !== null && state.pendingFarewell) {
+    els.answer.classList.add("is-hidden");
+    els.dialogue.textContent = state.pendingFarewell;
+    els.primary.textContent = text().continueJourney;
+    setActionMode("handoff");
+    return;
+  }
+
+  if (state.currentDraft?.question && state.currentDraft.questionIndex === state.questionIndex) {
+    renderDialogueParts([state.currentDraft.npcReply, state.currentDraft.question]);
+    els.answer.value = state.draftAnswer;
+    els.primary.textContent = state.questionIndex === 2 && state.index === scenes.length - 1
+      ? text().summon || "Summon my dragon"
+      : text().next;
+    return;
+  }
+
+  void loadNpcTurn();
 }
 
 async function apiPost(url, payload, options = {}) {
@@ -653,6 +786,10 @@ els.answer.addEventListener("keydown", (event) => {
     handlePrimary();
   }
 });
+els.answer.addEventListener("input", () => {
+  state.draftAnswer = els.answer.value;
+  saveProgress();
+});
 els.copyPrompt.addEventListener("click", async () => {
   if (!state.resultPrompt) return;
   await navigator.clipboard.writeText(state.resultPrompt);
@@ -662,5 +799,9 @@ els.copyPrompt.addEventListener("click", async () => {
   }, 1400);
 });
 
-updateAudioButton();
-setSceneShell(0);
+if (restoreProgress()) {
+  resumeSavedScreen();
+} else {
+  updateAudioButton();
+  setSceneShell(0);
+}
