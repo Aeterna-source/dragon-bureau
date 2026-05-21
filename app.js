@@ -257,9 +257,35 @@ function setActionMode(mode) {
   els.primary.dataset.mode = mode;
 }
 
-function setSceneShell(index) {
+function renderDialogueParts(parts) {
+  const lines = parts
+    .map((part) => String(part || "").trim())
+    .filter(Boolean);
+
+  els.dialogue.innerHTML = lines.map((line) => `<span>${escapeHtml(line)}</span>`).join("");
+}
+
+function setNpcCard(scene, isVisible = true) {
+  els.npcCard.classList.toggle("is-hidden", !isVisible);
+  els.npcImage.src = scene.npcImage;
+  els.npcImage.alt = `${scene.title}, ${scene.role}`;
+  els.npcName.textContent = scene.title;
+  els.npcRole.textContent = scene.role;
+}
+
+function preloadImage(src) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = resolve;
+    image.onerror = resolve;
+    image.src = src;
+  });
+}
+
+function setSceneShell(index, options = {}) {
   state.index = index;
   const scene = scenes[index];
+  const hideNpc = options.hideNpc === true;
 
   els.scene.dataset.scene = scene.id;
   els.background.style.backgroundImage = `url("${scene.background}")`;
@@ -285,39 +311,46 @@ function setSceneShell(index) {
     return;
   }
 
-  els.npcCard.classList.remove("is-hidden");
-  els.npcImage.src = scene.npcImage;
-  els.npcImage.alt = `${scene.title}, ${scene.role}`;
-  els.npcName.textContent = scene.title;
-  els.npcRole.textContent = scene.role;
+  setNpcCard(scene, !hideNpc);
   els.speaker.textContent = scene.title;
   els.answer.classList.remove("is-hidden");
-  els.answer.focus({ preventScroll: true });
+  if (!hideNpc) {
+    els.answer.focus({ preventScroll: true });
+  }
 }
 
 async function enterNpcScene(index, options = {}) {
-  await showTransition(scenes[index], options);
-  setSceneShell(index);
+  const scene = scenes[index];
+  await showTransition(scene, options);
+  setSceneShell(index, { hideNpc: true });
   state.questionIndex = 0;
-  await loadNpcTurn();
+  await Promise.all([loadNpcTurn(), preloadImage(scene.npcImage)]);
+  setNpcCard(scene, true);
+  els.answer.focus({ preventScroll: true });
 }
 
 function showTransition(scene, options = {}) {
   const showLocation = options.showLocation === true;
-  const duration = showLocation ? 1900 : 850;
+  const duration = showLocation ? 2200 : 700;
 
   if (showLocation) {
+    els.scene.classList.add("is-previewing");
     els.scene.dataset.scene = scene.id;
     els.background.style.backgroundImage = `url("${scene.background}")`;
     if (scene.audio) setAudio(scene.audio, true);
     els.npcCard.classList.add("is-hidden");
     els.answer.classList.add("is-hidden");
-    els.dialogue.textContent = "";
+    els.dialogue.innerHTML = "";
     els.speaker.textContent = text().entering;
     els.progress.textContent = "";
     els.kicker.textContent = scene.kicker;
     els.title.textContent = scene.title;
-    return new Promise((resolve) => setTimeout(resolve, duration));
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        els.scene.classList.remove("is-previewing");
+        resolve();
+      }, duration);
+    });
   }
 
   return new Promise((resolve) => {
@@ -359,8 +392,7 @@ async function loadNpcTurn() {
 
 function applyNpcTurn(turn) {
   const scene = scenes[state.index];
-  const reply = turn.npc_reply ? `${turn.npc_reply}\n\n` : "";
-  els.dialogue.textContent = `${reply}${turn.question}`;
+  renderDialogueParts([turn.npc_reply, turn.question]);
   els.primary.textContent = state.questionIndex === 2 && state.index === scenes.length - 1
     ? text().summon || "Summon my dragon"
     : text().next;

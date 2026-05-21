@@ -127,6 +127,19 @@ textarea {
   z-index: 2;
 }
 
+.topbar,
+.dialogue-panel,
+.npc-card {
+  transition: opacity 260ms ease;
+}
+
+.scene.is-previewing .topbar,
+.scene.is-previewing .dialogue-panel,
+.scene.is-previewing .npc-card {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .topbar {
   display: flex;
   align-items: flex-start;
@@ -314,6 +327,14 @@ button:hover {
   font-size: clamp(1.08rem, 1.55vw, 1.42rem);
   line-height: 1.45;
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.46);
+}
+
+#dialogueText span {
+  display: block;
+}
+
+#dialogueText span + span {
+  margin-top: 0.85em;
 }
 
 textarea {
