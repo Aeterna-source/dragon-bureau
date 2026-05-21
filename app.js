@@ -63,6 +63,7 @@ const fallbackText = {
     imageLoading: "Summoning the portrait card...",
     imageFailed: "The portrait portal flickered. The written registry survived.",
     entering: "Entering",
+    continueJourney: "Continue",
     resultLabel: "Your Inner Dragon",
     notesLabel: "Bureau Notes",
   },
@@ -82,6 +83,7 @@ const fallbackText = {
     imageLoading: "Призиваємо портретну картку...",
     imageFailed: "Портал портрета блимнув. Письмовий реєстр вцілів.",
     entering: "Входимо",
+    continueJourney: "Далі",
     resultLabel: "Твій внутрішній дракон",
     notesLabel: "Нотатки Бюро",
   },
@@ -161,9 +163,12 @@ const state = {
   index: 0,
   entranceStep: "question",
   language: "en",
+  sessionId: window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
   audioOn: true,
   turns: [],
   currentDraft: null,
+  pendingFarewell: "",
+  pendingNextIndex: null,
   questionIndex: 0,
   resultPrompt: "",
 };
@@ -243,6 +248,10 @@ function setBusy(isBusy, label = "") {
   }
 }
 
+function setActionMode(mode) {
+  els.primary.dataset.mode = mode;
+}
+
 function setSceneShell(index) {
   state.index = index;
   const scene = scenes[index];
@@ -281,27 +290,33 @@ function setSceneShell(index) {
   els.answer.focus({ preventScroll: true });
 }
 
-async function enterNpcScene(index) {
-  await showTransition(scenes[index]);
+async function enterNpcScene(index, options = {}) {
+  await showTransition(scenes[index], options);
   setSceneShell(index);
   state.questionIndex = 0;
   await loadNpcTurn();
 }
 
-function showTransition(scene) {
-  els.transitionKicker.textContent = scene.kicker || text().entering;
-  els.transitionTitle.textContent = scene.title;
-  els.transition.classList.remove("is-hidden");
-  requestAnimationFrame(() => els.transition.classList.add("is-visible"));
+function showTransition(scene, options = {}) {
+  const showLocation = options.showLocation === true;
+  const duration = showLocation ? 1900 : 850;
+
+  if (showLocation) {
+    els.scene.dataset.scene = scene.id;
+    els.background.style.backgroundImage = `url("${scene.background}")`;
+    if (scene.audio) setAudio(scene.audio, true);
+    els.npcCard.classList.add("is-hidden");
+    els.answer.classList.add("is-hidden");
+    els.dialogue.textContent = "";
+    els.speaker.textContent = text().entering;
+    els.progress.textContent = "";
+    els.kicker.textContent = scene.kicker;
+    els.title.textContent = scene.title;
+    return new Promise((resolve) => setTimeout(resolve, duration));
+  }
 
   return new Promise((resolve) => {
-    setTimeout(() => {
-      els.transition.classList.remove("is-visible");
-      setTimeout(() => {
-        els.transition.classList.add("is-hidden");
-        resolve();
-      }, 360);
-    }, 920);
+    setTimeout(resolve, duration);
   });
 }
 
@@ -313,6 +328,7 @@ async function loadNpcTurn() {
     const turn = await apiPost("/api/npc-turn", {
       sceneId: scene.id,
       language: state.language,
+      sessionId: state.sessionId,
       questionIndex: state.questionIndex,
       turns: state.turns,
     });
@@ -325,6 +341,7 @@ async function loadNpcTurn() {
       question: questions[state.questionIndex],
       trait_updates: {},
       notes_for_final: "Mock fallback turn.",
+      farewell: state.language === "ua" ? "Гаразд. Іди далі, поки двері ще вдають, що вони звичайні." : "Good. Go on, before the next door pretends it is ordinary.",
     });
   } finally {
     setBusy(false);
@@ -354,6 +371,7 @@ function applyNpcTurn(turn) {
     answer: "",
     traitUpdates: turn.trait_updates || {},
     notesForFinal: "",
+    farewell: turn.farewell || "",
   };
 }
 
@@ -377,7 +395,14 @@ async function submitNpcAnswer() {
   }
 
   if (state.index < scenes.length - 1) {
-    await enterNpcScene(state.index + 1);
+    state.pendingFarewell =
+      state.currentDraft.farewell ||
+      (state.language === "ua" ? "Гаразд. Далі тебе чекає інший департамент." : "Good. Another department is waiting.");
+    state.pendingNextIndex = state.index + 1;
+    els.answer.classList.add("is-hidden");
+    els.dialogue.textContent = state.pendingFarewell;
+    els.primary.textContent = text().continueJourney;
+    setActionMode("handoff");
     return;
   }
 
@@ -394,6 +419,7 @@ async function finalize() {
   try {
     result = await apiPost("/api/finalize-dragon", {
       language: state.language,
+      sessionId: state.sessionId,
       turns: state.turns,
     });
   } catch (error) {
@@ -451,6 +477,15 @@ function showResult(result, imageUrl, imageStatus = "") {
 }
 
 function handlePrimary() {
+  if (els.primary.dataset.mode === "handoff") {
+    const nextIndex = state.pendingNextIndex;
+    state.pendingFarewell = "";
+    state.pendingNextIndex = null;
+    setActionMode("normal");
+    void enterNpcScene(nextIndex, { showLocation: true });
+    return;
+  }
+
   if (state.index === 0) {
     if (state.entranceStep === "question") {
       const answer = els.answer.value.trim();
@@ -486,8 +521,11 @@ function restart() {
   state.language = "en";
   state.turns = [];
   state.currentDraft = null;
+  state.pendingFarewell = "";
+  state.pendingNextIndex = null;
   state.questionIndex = 0;
   state.resultPrompt = "";
+  setActionMode("normal");
   els.dialogue.innerHTML = "";
   setSceneShell(0);
 }

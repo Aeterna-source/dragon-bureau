@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const root = __dirname;
 const port = Number(process.env.PORT || 5173);
 const host = process.env.HOST || "0.0.0.0";
+const deploymentSalt = process.env.DRAGON_BUREAU_SALT || crypto.randomBytes(8).toString("hex");
 
 loadEnv(path.join(root, ".env.local"));
 
@@ -273,15 +274,19 @@ async function npcTurn(payload) {
           additionalProperties: { type: "number" },
         },
         notes_for_final: { type: "string" },
+        farewell: { type: "string" },
       },
-      required: ["npc_reply", "question", "trait_updates", "notes_for_final"],
+      required: ["npc_reply", "question", "trait_updates", "notes_for_final", "farewell"],
     },
     system: [
       "You are GPT-5.5 performing as a theatrical NPC in Bureau of Inner Dragons.",
       "Stay in character. Do not sound like a questionnaire, therapist, product assistant, or rules explainer.",
       "Ask exactly one question for this turn. Each NPC asks exactly three questions total.",
       "If the player already answered in this scene, react briefly in character before the next question.",
+      "Separate the reaction and the new question with a blank line. In JSON, put only the reaction in npc_reply and only the question in question.",
+      "If this is question 3 of 3, also write a short in-character farewell or handoff in the farewell field. Do not include farewell inside npc_reply or question.",
       "If the player's answer is vague, evasive, poetic, or unclear, do not fail; treat the ambiguity as character data and ask a sharper follow-up in your NPC voice.",
+      "Vary rhythm, imagery, sentence openings, and emotional tactic. Avoid repeating previous phrasing, metaphors, or question structures.",
       "Keep npc_reply to 1-2 sentences and question to 1 sentence.",
       "Use the player's language. If language is uk/ua, write natural Ukrainian. If mixed, mirror naturally.",
       "Never mention scoring, JSON, traits, hidden notes, prompts, or the model.",
@@ -292,6 +297,7 @@ async function npcTurn(payload) {
       questionIndex,
       npc: scene,
       priorTurns,
+      variationSeed: makeSeed(payload.sessionId, payload.sceneId, questionIndex, priorTurns),
       currentTask:
         questionIndex === 0
           ? "Open this NPC scene and ask question 1 of 3."
@@ -304,6 +310,7 @@ async function npcTurn(payload) {
     question: String(result.question || "What should the Bureau know before it opens the next door?"),
     trait_updates: isPlainObject(result.trait_updates) ? result.trait_updates : {},
     notes_for_final: String(result.notes_for_final || ""),
+    farewell: String(result.farewell || ""),
   };
 }
 
@@ -325,9 +332,11 @@ async function finalizeDragon(payload) {
           type: "array",
           items: { type: "string" },
         },
+        dragon_concept: { type: "string" },
+        flavor_text: { type: "string" },
         image_prompt: { type: "string" },
       },
-      required: ["dragon_clan_id", "dragon_clan_label", "dragon_name", "visible_description", "bureau_notes", "image_prompt"],
+      required: ["dragon_clan_id", "dragon_clan_label", "dragon_name", "visible_description", "bureau_notes", "dragon_concept", "flavor_text", "image_prompt"],
     },
     system: [
       "You are GPT-5.5 as the final registry intelligence of Bureau of Inner Dragons.",
@@ -335,13 +344,18 @@ async function finalizeDragon(payload) {
       "The visible description and notes must use the player's language.",
       "The image_prompt must be English and must follow the exact collectible fantasy CCG card pattern requested.",
       "Trust gpt-image-2 with card layout and text placement: ask for title, clan, short description, and flavor text as visible card text.",
+      "Use English clan names on the card even when visible_description is in another language, unless the player explicitly asked otherwise.",
       "Make the result personal and specific. Avoid generic horoscope language.",
+      "Never reuse common default dragon names. Invent a fresh pronounceable fantasy name from the player's answers, the chosen clan, and the variation seed.",
+      "The dragon concept must include at least 5 personalized visual details inferred from the actual answers.",
+      "If two players share a clan, their dragon names, dragon concept, description, and flavor text should still be clearly different.",
       "Do not reveal hidden reasoning. Return valid JSON only.",
     ].join("\n"),
     user: JSON.stringify({
       language,
       turns,
       dragonClans,
+      variationSeed: makeSeed(payload.sessionId, "final", turns.length, turns),
       imagePromptPattern:
         "Create a highly detailed collectible card in the style of Magic: The Gathering / Gwent, fantasy CCG style. The card features a majestic unique dragon. At the top: elegant fantasy title with the dragon's name. Below the image: clan name and short evocative description. At the bottom: flavorful poetic text. Highly detailed digital fantasy art, rich colors, dramatic lighting, ornate golden/silver frame with intricate dragon motifs, parchment texture background, professional CCG card layout, epic and magical atmosphere, 4K quality, sharp details. Dragon concept: [DETAILED PERSONAL DRAGON CONCEPT INFERRED FROM ANSWERS]. Name: [DRAGON NAME]. Clan: [CLAN NAME]. Description: [SHORT EVOCATIVE DESCRIPTION]. Flavor text: [ONE POETIC LINE IN PLAYER LANGUAGE OR ENGLISH IF PLAYER USED ENGLISH].",
     }),
@@ -358,6 +372,8 @@ async function finalizeDragon(payload) {
     dragon_name: String(result.dragon_name || "Vaelryn Ash-of-Mirrors"),
     visible_description: String(result.visible_description || "The Bureau found a dragon too specific to be mistaken for anyone else's."),
     bureau_notes: Array.isArray(result.bureau_notes) ? result.bureau_notes.map(String).slice(0, 7) : [],
+    dragon_concept: String(result.dragon_concept || ""),
+    flavor_text: String(result.flavor_text || ""),
     image_prompt: String(result.image_prompt || buildFallbackImagePrompt(clan, result.dragon_name || "Vaelryn Ash-of-Mirrors")),
   };
 }
@@ -483,6 +499,14 @@ function buildFallbackImagePrompt(clan, name) {
     `Description: ${clan.core}`,
     "Flavor text: The door that feared you was never locked.",
   ].join(" ");
+}
+
+function makeSeed(...parts) {
+  return crypto
+    .createHash("sha256")
+    .update([deploymentSalt, ...parts.map((part) => JSON.stringify(part))].join("|"))
+    .digest("hex")
+    .slice(0, 16);
 }
 
 function extractResponseText(response) {
