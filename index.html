@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bureau of Inner Dragons</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="app" class="app" aria-live="polite">
+      <section class="scene" id="scene">
+        <div class="scene__background" id="sceneBackground"></div>
+        <div class="scene__veil"></div>
+        <div class="scene-transition is-hidden" id="sceneTransition">
+          <span id="transitionKicker"></span>
+          <strong id="transitionTitle"></strong>
+        </div>
+
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="sceneKicker">Bureau of Inner Dragons</p>
+            <h1 id="sceneTitle">Bureau of Inner Dragons</h1>
+          </div>
+          <div class="topbar__actions">
+            <button class="icon-button" id="audioToggle" type="button" aria-label="Toggle audio" title="Toggle audio">
+              <span id="audioIcon">♪</span>
+            </button>
+            <button class="ghost-button" id="restartButton" type="button">Restart</button>
+          </div>
+        </header>
+
+        <aside class="npc-card is-hidden" id="npcCard" aria-label="Current Bureau agent">
+          <img id="npcImage" alt="" />
+          <div class="npc-card__caption">
+            <strong id="npcName"></strong>
+            <span id="npcRole"></span>
+          </div>
+        </aside>
+
+        <section class="dialogue-panel" id="dialoguePanel">
+          <div class="dialogue-panel__meta">
+            <span id="speakerName">The Bureau</span>
+            <span id="progressText">Entrance</span>
+          </div>
+          <p id="dialogueText"></p>
+          <textarea
+            id="answerInput"
+            rows="3"
+            placeholder="Answer in any language. The Bureau will follow."
+          ></textarea>
+          <div class="dialogue-panel__actions">
+            <button class="primary-button" id="primaryButton" type="button">Enter the Bureau</button>
+            <button class="secondary-button is-hidden" id="copyPromptButton" type="button">Copy Image Prompt</button>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <audio id="sceneAudio" loop></audio>
+    <audio id="summonAudio"></audio>
+    <script src="./app.js"></script>
+  </body>
+</html>
