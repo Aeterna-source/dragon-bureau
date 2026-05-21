@@ -159,6 +159,11 @@ const mockResults = {
   },
 };
 
+const allowMockFallback =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1" ||
+  window.location.hostname.startsWith("192.168.");
+
 const state = {
   index: 0,
   entranceStep: "question",
@@ -335,6 +340,10 @@ async function loadNpcTurn() {
     applyNpcTurn(turn);
   } catch (error) {
     console.warn("NPC API fallback:", error);
+    if (!allowMockFallback) {
+      applyApiError(error);
+      return;
+    }
     const questions = mockQuestions[state.language][scene.id];
     applyNpcTurn({
       npc_reply: state.questionIndex === 0 ? "" : state.language === "ua" ? "Мм. Записала." : "Mm. Noted.",
@@ -424,6 +433,10 @@ async function finalize() {
     });
   } catch (error) {
     console.warn("Finalize API fallback:", error);
+    if (!allowMockFallback) {
+      applyApiError(error);
+      return;
+    }
     result = mockResults[state.language];
   }
 
@@ -444,6 +457,17 @@ async function finalize() {
     setBusy(false);
     els.primary.textContent = text().restart;
   }
+}
+
+function applyApiError(error) {
+  setBusy(false);
+  els.answer.classList.add("is-hidden");
+  els.dialogue.textContent =
+    state.language === "ua"
+      ? `Бюро спіткнулося об серверну помилку: ${error.message}. Це не відповідь моделі; треба глянути Railway logs або змінні.`
+      : `The Bureau hit a server error: ${error.message}. This is not the model's answer; check Railway logs or variables.`;
+  els.primary.textContent = text().restart;
+  state.index = scenes.length;
 }
 
 function showResult(result, imageUrl, imageStatus = "") {

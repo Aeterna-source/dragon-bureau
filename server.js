@@ -12,7 +12,7 @@ loadEnv(path.join(root, ".env.local"));
 
 const textModel = process.env.OPENAI_TEXT_MODEL || "gpt-5.5";
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
-const apiKey = process.env.OPENAI_API_KEY;
+const apiKey = normalizeApiKey(process.env.OPENAI_API_KEY);
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -202,6 +202,18 @@ function loadEnv(filePath) {
   }
 }
 
+function normalizeApiKey(value) {
+  if (!value) {
+    return "";
+  }
+
+  let key = String(value).trim().replace(/^["']|["']$/g, "");
+  while (key.startsWith("=")) {
+    key = key.slice(1).trim();
+  }
+  return key;
+}
+
 function serveStatic(url, res) {
   const requestedPath = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
   const filePath = path.normalize(path.join(root, requestedPath));
@@ -282,11 +294,13 @@ async function npcTurn(payload) {
       "You are GPT-5.5 performing as a theatrical NPC in Bureau of Inner Dragons.",
       "Stay in character. Do not sound like a questionnaire, therapist, product assistant, or rules explainer.",
       "Ask exactly one question for this turn. Each NPC asks exactly three questions total.",
+      "There is no fixed question bank. Invent the question live from the NPC role, the player's previous answers, and the variation seed.",
       "If the player already answered in this scene, react briefly in character before the next question.",
       "Separate the reaction and the new question with a blank line. In JSON, put only the reaction in npc_reply and only the question in question.",
       "If this is question 3 of 3, also write a short in-character farewell or handoff in the farewell field. Do not include farewell inside npc_reply or question.",
       "If the player's answer is vague, evasive, poetic, or unclear, do not fail; treat the ambiguity as character data and ask a sharper follow-up in your NPC voice.",
-      "Vary rhythm, imagery, sentence openings, and emotional tactic. Avoid repeating previous phrasing, metaphors, or question structures.",
+      "Vary rhythm, imagery, sentence openings, emotional tactic, and question shape. Avoid repeating previous phrasing, metaphors, or question structures.",
+      "Never ask a generic personality-test question if a sharper theatrical line would work.",
       "Keep npc_reply to 1-2 sentences and question to 1 sentence.",
       "Use the player's language. If language is uk/ua, write natural Ukrainian. If mixed, mirror naturally.",
       "Never mention scoring, JSON, traits, hidden notes, prompts, or the model.",
@@ -341,14 +355,16 @@ async function finalizeDragon(payload) {
     system: [
       "You are GPT-5.5 as the final registry intelligence of Bureau of Inner Dragons.",
       "Choose exactly one dragon clan based on the player's full interview.",
+      "Do not default to the first clan in the list. Compare all clans equally; if two clans fit, use the variation seed and the player's strangest specific answer as the tie-breaker.",
       "The visible description and notes must use the player's language.",
-      "The image_prompt must be English and must follow the exact collectible fantasy CCG card pattern requested.",
+      "The image_prompt must be English and must request a collectible fantasy CCG card.",
       "Trust gpt-image-2 with card layout and text placement: ask for title, clan, short description, and flavor text as visible card text.",
       "Use English clan names on the card even when visible_description is in another language, unless the player explicitly asked otherwise.",
       "Make the result personal and specific. Avoid generic horoscope language.",
       "Never reuse common default dragon names. Invent a fresh pronounceable fantasy name from the player's answers, the chosen clan, and the variation seed.",
       "The dragon concept must include at least 5 personalized visual details inferred from the actual answers.",
       "If two players share a clan, their dragon names, dragon concept, description, and flavor text should still be clearly different.",
+      "Do not copy any example names, example objects, or sample details unless the player's answers independently justify them.",
       "Do not reveal hidden reasoning. Return valid JSON only.",
     ].join("\n"),
     user: JSON.stringify({
@@ -356,8 +372,12 @@ async function finalizeDragon(payload) {
       turns,
       dragonClans,
       variationSeed: makeSeed(payload.sessionId, "final", turns.length, turns),
-      imagePromptPattern:
-        "Create a highly detailed collectible card in the style of Magic: The Gathering / Gwent, fantasy CCG style. The card features a majestic unique dragon. At the top: elegant fantasy title with the dragon's name. Below the image: clan name and short evocative description. At the bottom: flavorful poetic text. Highly detailed digital fantasy art, rich colors, dramatic lighting, ornate golden/silver frame with intricate dragon motifs, parchment texture background, professional CCG card layout, epic and magical atmosphere, 4K quality, sharp details. Dragon concept: [DETAILED PERSONAL DRAGON CONCEPT INFERRED FROM ANSWERS]. Name: [DRAGON NAME]. Clan: [CLAN NAME]. Description: [SHORT EVOCATIVE DESCRIPTION]. Flavor text: [ONE POETIC LINE IN PLAYER LANGUAGE OR ENGLISH IF PLAYER USED ENGLISH].",
+      imagePromptBrief: {
+        format: "highly detailed collectible fantasy CCG card, Magic: The Gathering / Gwent inspired, ornate dragon-motif frame, parchment texture, rich colors, dramatic lighting, sharp high-detail digital fantasy art",
+        visibleText: "top title is the dragon name; lower label is the clan name plus a short evocative description; bottom contains one poetic flavor line",
+        requiredFields: ["Dragon concept", "Name", "Clan", "Description", "Flavor text"],
+        personalization: "base the dragon concept, name, description, and flavor text on the player's actual answers and the selected clan; avoid reusable sample details",
+      },
     }),
   });
 
